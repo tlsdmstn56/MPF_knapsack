@@ -1,6 +1,6 @@
 #pragma once
 
-// #include <algorithm>
+#include <algorithm>
 #include <list>
 #include <vector>
 #include <iterator>
@@ -54,7 +54,7 @@ void MergeLists(std::vector<Triple> &A, std::vector<Triple> &B,
 		}
 
 		//Merge A, T_p
-		merge(A.begin(), A.end(), T_p.begin(), T_p.end(), std::back_inserter(Tcopy));
+		std::merge(A.begin(), A.end(), T_p.begin(), T_p.end(), std::back_inserter(Tcopy));
 		A = Tcopy;
 	}
 
@@ -80,7 +80,7 @@ void MergeLists(std::vector<Triple> &A, std::vector<Triple> &B,
 		}
 
 		//Merge B, T_p
-		merge(B.begin(), B.end(), T_p.begin(), T_p.end(), std::back_inserter(Tcopy), std::greater<>());
+		std::merge(B.begin(), B.end(), T_p.begin(), T_p.end(), std::back_inserter(Tcopy), std::greater<>());
 		B = Tcopy;
 	}
 }
@@ -144,12 +144,19 @@ int64_t DPKnapsack(int64_t W, double wt[], double val[], int64_t n)
 		for (w = 0; w <= W; w++)
 		{
 			if (i == 0 || w == 0)
+			{
 				K[i][w] = 0;
+			}
 			else if (wt[i - 1] <= w)
-				K[i][w] = max(val[i - 1] + K[i - 1][w - static_cast<int64_t>(wt[i - 1])], 
-					K[i - 1][w]);
+			{
+				double tmp = val[i - 1] + K[i - 1][w - static_cast<int64_t>(wt[i - 1])];
+				K[i][w] = tmp>K[i - 1][w]?tmp:K[i - 1][w];
+			}
 			else
+			{
 				K[i][w] = K[i - 1][w];
+			}
+			
 		}
 	}
 	return static_cast<int64_t>(K[n][W]);

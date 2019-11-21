@@ -1,7 +1,6 @@
-#include<iostream>
+#include <iostream>
 #include <thread>
 #include <chrono>
-
 
 #include <CL/cl.h>
 

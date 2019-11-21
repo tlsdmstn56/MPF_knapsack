@@ -5,8 +5,9 @@ project (mpf_knapsack)
 # OS specific
 if (WIN32)
 
-else(APPLE)
+elseif(UNIX)
     # compiler setup
+    set(CMAKE_CXX_COMPILER "clang")
     set(CMAKE_CXX_COMPILER "clang++")
     # compile flags
     SET (CMAKE_C_FLAGS_INIT                "-Wall -std=c99")
@@ -37,7 +38,7 @@ if (WIN32)
         ./src
     )
     set(PAPI_LIBRARY "")
-elseif(APPLE)
+elseif(UNIX)
     include_directories(
         ./src
         ./external/papi/src
