@@ -8,4 +8,5 @@ add_executable(
 )
 target_link_libraries (parallel_copa 
     ${OpenCL_LIBRARY}
+    ${PAPI_LIBRARY}
 )
