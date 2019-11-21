@@ -5,9 +5,9 @@ project (mpf_knapsack)
 # OS specific
 if (WIN32)
 
-else()
+else(APPLE)
     # compiler setup
-    set(CMAKE_CXX_COMPILER "clang")
+    set(CMAKE_CXX_COMPILER "clang++")
     # compile flags
     SET (CMAKE_C_FLAGS_INIT                "-Wall -std=c99")
     SET (CMAKE_C_FLAGS_DEBUG_INIT          "-g")
@@ -30,9 +30,24 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-include_directories(
-    ./src
-)
+
+# include path
+if (WIN32)
+    include_directories(
+        ./src
+    )
+    set(PAPI_LIBRARY "")
+elseif(APPLE)
+    include_directories(
+        ./src
+        ./external/papi/src
+    )
+    link_directories(
+        ./external/papi/src
+    )
+    set(PAPI_LIBRARY "papi")
+endif()
+
 
 
 # include directories
