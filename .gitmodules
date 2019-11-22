@@ -1,0 +1,3 @@
+[submodule "external/papi"]
+	path = external/papi
+	url = https://bitbucket.org/icl/papi.git
