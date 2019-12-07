@@ -7,6 +7,7 @@
 
 #include <CL/cl.h>
 
+#include <common/Timer.hpp>
 #include "Utils.hpp"
 #include "ParallelCopaBase.hpp"
 #include "Triple.hpp"
@@ -22,11 +23,15 @@ public:
 	{
 		queue.finish();
 	}
-	std::bitset<64> getSolutionSet() const {
+	constexpr std::bitset<64> getSolutionSet() const noexcept {
 		return solution_set;
+	}
+	constexpr int64_t getElapsedTime() const noexcept {
+		return elapsedTime;
 	}
 
 private:
+	Timer timer;
 	std::string cl_file_path;
 	cl::Program program;
 	std::vector<Triple> A;
@@ -109,4 +114,5 @@ private:
 		}
 		delete[] t;
 	}
+	int64_t elapsedTime=0;
 };

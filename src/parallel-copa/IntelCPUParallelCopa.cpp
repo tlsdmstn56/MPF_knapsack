@@ -4,14 +4,19 @@
 #include <bitset>
 #include <CL/cl.hpp>
 
+#include <common/Timer.hpp>
+
 #include "Pair.hpp"
 
 
 
 cl_long IntelCPUParallelCopa::Solve()
 {
-	// build OpenCL Kernels
+	timer.start();
+	// Split A and B, sort
+	split_vector();
 
+	// setup opencl
 	const auto src = GetSourceFromFile(cl_file_path);
 	auto sources = cl::Program::Sources(1, std::make_pair(src.c_str(), src.length() + 1));
 	program = cl::Program(context, sources);
@@ -22,11 +27,7 @@ cl_long IntelCPUParallelCopa::Solve()
 		exit(EXIT_FAILURE);
 	}
 
-	// Split A and B, sort
-	split_vector();
-
-
-	// init buffers
+	// init constants
 	ASize = A.size();
 	BSize = B.size();
 	A_buffer_size = (1ll << ASize);
@@ -34,6 +35,7 @@ cl_long IntelCPUParallelCopa::Solve()
 	A_local_size = A_buffer_size / num_parallel;
 	B_local_size = B_buffer_size / num_parallel;
 
+	// init buffers
 	cl_int err;
 	buffer_A = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(Triple) * A_buffer_size, NULL, &err);
 	printError(err, "buffer_A");
@@ -53,8 +55,12 @@ cl_long IntelCPUParallelCopa::Solve()
 	// stage 5: final_search
 	final_search();
 
+	elapsedTime = timer.stop();
+
 	return solution_value;
 }
+
+
 
 void IntelCPUParallelCopa::split_vector() noexcept
 {
@@ -62,12 +68,12 @@ void IntelCPUParallelCopa::split_vector() noexcept
 	const size_t BSize = data.getTable().size() - ASize;
 	A.reserve(ASize);
 	B.reserve(BSize);
-	for (int i = 0; i < ASize; ++i)
+	for (size_t i = 0; i < ASize; ++i)
 	{
 		const auto& entry = data.getTable().at(i);
 		A.emplace_back(1ll << i, entry.first, entry.second);
 	}
-	for (int i = ASize; i < data.getTable().size(); ++i)
+	for (size_t i = ASize; i < data.getTable().size(); ++i)
 	{
 		const auto& entry = data.getTable().at(i);
 		B.emplace_back(1ll << i, entry.first, entry.second);
@@ -100,7 +106,7 @@ void IntelCPUParallelCopa::parallel_generation()
 	add_triple.setArg(2, buffer_arg);
 	// set sequential threshold
 	int seq_threshold = 0;
-	int _num_parallel = num_parallel;
+	cl_long _num_parallel = num_parallel;
 	while (_num_parallel) {
 		_num_parallel >>= 1;
 		++seq_threshold;

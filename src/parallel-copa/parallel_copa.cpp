@@ -9,7 +9,8 @@
 
 #include <common/Data.hpp> // Data
 #include <common/DataGenerator.hpp> // DataGenerator
-//#include <common/Timer.hpp> // Timer
+#include <common/Timer.hpp> // Timer
+
 #include "Utils.hpp"
 #include "IntelCPUParallelCopa.hpp"
 
@@ -85,11 +86,13 @@ int main(int argc, char** argv) {
 
 	cl_long solution = 0;
 	std::bitset<64> solutionSet;
+	int64_t time=0;
 	try {
 		IntelCPUParallelCopa copa(platform_idx, device_idx, num_threads,
 			data, cl_file_path);
 		solution = copa.Solve();
 		solutionSet = copa.getSolutionSet();
+		time = copa.getElapsedTime();
 	}
 	catch (const CLFileNotExistException& e)
 	{
@@ -99,6 +102,7 @@ int main(int argc, char** argv) {
 
 	std::cout << "Solution:     " << solution << "\n";
 	std::cout << "Solution Set: " << solutionSet.to_string().substr(64-n, n) << "\n";
+	std::cout << "Elapsed Time: " << time << "ns\n";
 
 	return EXIT_SUCCESS;
 }
