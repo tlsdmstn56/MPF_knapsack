@@ -33,15 +33,20 @@ void printCLSDK() {
 	}
 }
 
+bool isNumThreadsValid(int num_threads, int n)
+{
+	return ((1ll << (n >> 1)) / num_threads) > 0;
+}
+
 int main(int argc, char** argv) {
 	int device_idx = 0, platform_idx = 0, n = 10, num_threads = 1, seed=0;
 	std::string cl_file_path;
 	cxxopts::Options options(argv[0], "Solve kanpsack problem on heterogeous cores using OpenCL");
 	options.add_options()
-		("d,device", "Device Index", cxxopts::value<int>(device_idx)->default_value("0"))
 		("p,platform", "Platform Index", cxxopts::value<int>(platform_idx)->default_value("0"))
+		("d,device", "Device Index", cxxopts::value<int>(device_idx)->default_value("0"))
+		("j,", "the number of threads", cxxopts::value<int>(num_threads)->default_value("1"))
 		("n,", "The number of data", cxxopts::value<int>(n)->default_value("10"))
-		("j,", "the number of threads", cxxopts::value<int>(num_threads)->default_value("8"))
 		("s,seed", "Seed for data generator", cxxopts::value<int>(seed)->default_value("0"))
 		("f,cl_file_path", "path of copa_kernels.cl file", cxxopts::value<std::string>(cl_file_path)->default_value("copa_kernels.cl"))
 		("list", "List platforms and devices")
@@ -67,7 +72,11 @@ int main(int argc, char** argv) {
 		std::cerr << "ERROR: parsing options: " << e.what() << std::endl;
 		return EXIT_FAILURE;
 	}
-	
+	if (!isNumThreadsValid(num_threads, n))
+	{
+		std::cerr << "ERROR: too small data size(n) given the number of threads " << std::endl;
+		return EXIT_FAILURE;
+	}
 
 	
 
@@ -80,9 +89,8 @@ int main(int argc, char** argv) {
 	}
 	std::cout << "Selected Platform: " << platforms.at(platform_idx).getInfo<CL_PLATFORM_NAME>() << "\n";
 	platforms.at(platform_idx).getDevices(CL_DEVICE_TYPE_ALL, &devices);
-	std::cout << "Selected Device:   " << devices.at(1).getInfo<CL_DEVICE_NAME>() << "\n";
+	std::cout << "Selected Device:   " << devices.at(device_idx).getInfo<CL_DEVICE_NAME>() << "\n";
 	Data data = DataGenerator::generate(n, seed);
-	device_idx = 1;
 
 	cl_long solution = 0;
 	std::bitset<64> solutionSet;
@@ -102,7 +110,7 @@ int main(int argc, char** argv) {
 
 	std::cout << "Solution:     " << solution << "\n";
 	std::cout << "Solution Set: " << solutionSet.to_string().substr(64-n, n) << "\n";
-	std::cout << "Elapsed Time: " << time << "ns\n";
+	std::cout << "Elapsed Time: " << time << " ns\n";
 
 	return EXIT_SUCCESS;
 }

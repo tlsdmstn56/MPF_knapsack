@@ -137,6 +137,7 @@ __kernel void merge_array_parallel_b(
 __kernel void first_max_scan(
 	__global Triple* a,
 	__global long* values,
+	__global long* values_idx,
 	const long local_size)
 {
 	const long group_id = get_group_id(0);
@@ -150,6 +151,7 @@ __kernel void first_max_scan(
 		}
 	}
 	values[group_id] = max_profit;
+	values_idx[group_id] = local_size * group_id+max_idx;
 }
 
 void print_log(int group, __constant char* str, long data) {
@@ -162,12 +164,16 @@ __kernel void prune(
 	__global Pair* out,
 	__global long* AMax,
 	__global long* BMax,
+	__global long* AMax_idx,
+	__global long* BMax_idx,
+	__global long* max_val_out,
+	__global long* max_val_set_out,
 	const long A_local_size,
 	const long B_local_size,
 	const long c,
 	const long k)
 {
-	long max_value_i = 0;
+	long max_value_i = 0, max_value_b_idx = -1;
 	const long i = get_group_id(0);
 	A = &A[A_local_size * i];
 	out = &out[2 * i];
@@ -183,6 +189,7 @@ __kernel void prune(
 			if ((AMax[i] + BMax[jmodk]) > max_value_i)
 			{
 				max_value_i = AMax[i] + BMax[jmodk];
+				max_value_b_idx = jmodk;
 			}
 		}
 		else if ((Z <= c) && (Y > c))
@@ -192,6 +199,17 @@ __kernel void prune(
 			out[out_idx++].b_idx = jmodk * B_local_size;
 		}
 	}
+	max_val_out[i] = max_value_i;
+	/*if (i == 1) print_log(i, "max_value_b_idx: ", max_value_b_idx);
+	if (i == 1) print_log(i, "BMax_idx[max_value_b_idx]: ", BMax_idx[max_value_b_idx]);
+	if (i == 1) print_log(i, "BMax_idx[max_value_b_idx].set: ", B[BMax_idx[max_value_b_idx]].set);*/
+	if (max_value_b_idx >= 0)
+	{
+		max_val_set_out[i] =
+			A[AMax_idx[i]].set +
+			B[BMax_idx[max_value_b_idx]].set;
+	}
+	
 }
 
 __kernel void second_max_scan(

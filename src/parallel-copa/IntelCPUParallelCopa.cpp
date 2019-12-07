@@ -140,11 +140,12 @@ void IntelCPUParallelCopa::parallel_generation()
 			cl::NullRange,
 			cl::NDRange(1),
 			cl::NDRange(1));
-		queue.finish(); // synchronization point
+		
 		// debug only -----------------------------------------------------------
 		//printBuffer(size, bytesize);
 		// debug only -----------------------------------------------------------
 	}
+	queue.finish(); // synchronization point
 	for (int i = seq_threshold; i < ASize; ++i)
 	{
 		const cl_long size = (1ll << i);
@@ -228,6 +229,7 @@ void IntelCPUParallelCopa::parallel_generation()
 		//printBuffer(size, bytesize);
 		// devel only -----------------------------------------------------------
 	}
+	//printBuffer(A)
 }
 
 
@@ -238,11 +240,13 @@ void IntelCPUParallelCopa::first_max_scan()
 
 	const cl_long ABufferSize = (1ll << A.size()) / num_parallel;
 	buffer_AMaxValues = cl::Buffer(context, CL_MEM_READ_WRITE, bytesize);
+	buffer_AMaxValuesIdx = cl::Buffer(context, CL_MEM_READ_WRITE, bytesize);
 	cl::Kernel get_max_value_a(program, "first_max_scan", &err);
 	printError(err, "get_max_value_a kernel error");
 	get_max_value_a.setArg(0, buffer_A);
 	get_max_value_a.setArg(1, buffer_AMaxValues);
-	get_max_value_a.setArg(2, sizeof(cl_long), &ABufferSize);
+	get_max_value_a.setArg(2, buffer_AMaxValuesIdx);
+	get_max_value_a.setArg(3, sizeof(cl_long), &ABufferSize);
 	queue.enqueueNDRangeKernel(get_max_value_a,
 		cl::NullRange,
 		cl::NDRange(num_parallel),
@@ -250,16 +254,20 @@ void IntelCPUParallelCopa::first_max_scan()
 
 	const cl_long BBufferSize = (1ll << B.size()) / num_parallel;
 	buffer_BMaxValues = cl::Buffer(context, CL_MEM_READ_WRITE, bytesize);
+	buffer_BMaxValuesIdx = cl::Buffer(context, CL_MEM_READ_WRITE, bytesize);
 	cl::Kernel get_max_value_b(program, "first_max_scan", &err);
 	printError(err, "get_max_value_b kernel error");
 	get_max_value_b.setArg(0, buffer_B);
 	get_max_value_b.setArg(1, buffer_BMaxValues);
-	get_max_value_b.setArg(2, sizeof(cl_long), &BBufferSize);
+	get_max_value_b.setArg(2, buffer_BMaxValuesIdx);
+	get_max_value_b.setArg(3, sizeof(cl_long), &BBufferSize);
 	queue.enqueueNDRangeKernel(get_max_value_b,
 		cl::NullRange,
 		cl::NDRange(num_parallel),
 		cl::NDRange(1));
 	queue.finish();
+	 /*printBuffer<cl_long>(num_parallel, buffer_AMaxValuesIdx, "buffer_AMaxValuesIdx");
+	 printBuffer<cl_long>(num_parallel, buffer_BMaxValuesIdx, "buffer_BMaxValuesIdx");*/
 }
 
 
@@ -268,6 +276,8 @@ void IntelCPUParallelCopa::prune()
 	const size_t buffers_pruned_bytesize = sizeof(Pair) * num_parallel * 2;
 	buffer_pruned = cl::Buffer(context, CL_MEM_READ_WRITE, buffers_pruned_bytesize);
 	queue.enqueueFillBuffer(buffer_pruned, -1, 0, buffers_pruned_bytesize);
+	buffer_first_max_val = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_long)*num_parallel);
+	buffer_first_max_val_pair = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_long) * num_parallel);
 	cl_int err;
 	cl::Kernel prune_kernel(program, "prune", &err);
 	printError(err, "error in prune_parallel ");
@@ -278,15 +288,20 @@ void IntelCPUParallelCopa::prune()
 	prune_kernel.setArg(2, buffer_pruned);
 	prune_kernel.setArg(3, buffer_AMaxValues);
 	prune_kernel.setArg(4, buffer_BMaxValues);
-	prune_kernel.setArg(5, sizeof(cl_long), &A_local_size);
-	prune_kernel.setArg(6, sizeof(cl_long), &B_local_size);
-	prune_kernel.setArg(7, sizeof(cl_long), &c);
-	prune_kernel.setArg(8, sizeof(cl_long), &num_parallel);
+	prune_kernel.setArg(5, buffer_AMaxValuesIdx);
+	prune_kernel.setArg(6, buffer_BMaxValuesIdx);
+	prune_kernel.setArg(7, buffer_first_max_val);
+	prune_kernel.setArg(8, buffer_first_max_val_pair);
+	prune_kernel.setArg(9, sizeof(cl_long), &A_local_size);
+	prune_kernel.setArg(10, sizeof(cl_long), &B_local_size);
+	prune_kernel.setArg(11, sizeof(cl_long), &c);
+	prune_kernel.setArg(12, sizeof(cl_long), &num_parallel);
 	queue.enqueueNDRangeKernel(prune_kernel,
 		cl::NullRange,
 		cl::NDRange(num_parallel),
 		cl::NDRange(1));
 	queue.finish();
+	// printBuffer<Pair>(num_parallel * 2, buffer_pruned,"after prunning");
 }
 
 void IntelCPUParallelCopa::second_max_scan()
@@ -304,28 +319,13 @@ void IntelCPUParallelCopa::second_max_scan()
 	second_max_scan_kernel.setArg(3, buffer_max);
 	second_max_scan_kernel.setArg(4, sizeof(cl_long), &A_local_size);
 	second_max_scan_kernel.setArg(5, sizeof(cl_long), &B_local_size);
+	//printBuffer<Pair>(2 * num_parallel, buffer_pruned, "second_max_scan");
 	queue.enqueueNDRangeKernel(second_max_scan_kernel,
 		cl::NullRange,
 		cl::NDRange(num_parallel),
 		cl::NDRange(1));
 	queue.finish();
-	/*cl_long tmp[2 * 4 * 8];
-	queue.enqueueReadBuffer(buffer_max, CL_TRUE, 0, 2 * 4 * 8 * sizeof(cl_long), tmp);
-	for (int i = 0; i < 8; ++i) {
-		std::cout << "proceesor: " << i << "\n";
-		for (int t = 0; t < 2; ++t)
-		{
-			std::cout << "  t: " << t << "\n";
-			for (int j = 0; j < 4; ++j)
-			{
-				std::cout << "    j: " << tmp[ i*8*2 + t*2 + j ] << "\n";
-			}
-		}
-	}
-	std::cout << "--\n";
-	for (int i = 0; i < 2 * 4 * 8; ++i) {
-		std::cout << tmp[i] << "\n";
-	}*/
+	
 }
 
 void IntelCPUParallelCopa::final_search()
@@ -333,9 +333,9 @@ void IntelCPUParallelCopa::final_search()
 	const size_t buffer_max_bytesize = num_parallel * sizeof(cl_long);
 	const size_t buffer_max_pair_bytesize = num_parallel * sizeof(Pair);
 	cl_int err;
-	buffer_max_val = cl::Buffer(context, CL_MEM_READ_WRITE, buffer_max_bytesize, NULL, &err);
+	buffer_second_max_val = cl::Buffer(context, CL_MEM_READ_WRITE, buffer_max_bytesize, NULL, &err);
 	printError(err, "buffer_max_val");
-	buffer_max_val_pair = cl::Buffer(context, CL_MEM_READ_WRITE, buffer_max_pair_bytesize, NULL, &err);
+	buffer_second_max_val_pair = cl::Buffer(context, CL_MEM_READ_WRITE, buffer_max_pair_bytesize, NULL, &err);
 	printError(err, "buffer_max_val_pair");
 	const cl_long c = data.getCapacity();
 	cl::Kernel final_search_kernel(program, "final_search", &err);
@@ -344,8 +344,8 @@ void IntelCPUParallelCopa::final_search()
 	final_search_kernel.setArg(1, buffer_B);
 	final_search_kernel.setArg(2, buffer_pruned);
 	final_search_kernel.setArg(3, buffer_max);
-	final_search_kernel.setArg(4, buffer_max_val);
-	final_search_kernel.setArg(5, buffer_max_val_pair);
+	final_search_kernel.setArg(4, buffer_second_max_val);
+	final_search_kernel.setArg(5, buffer_second_max_val_pair);
 	final_search_kernel.setArg(6, sizeof(cl_long), &A_local_size);
 	final_search_kernel.setArg(7, sizeof(cl_long), &B_local_size);
 	final_search_kernel.setArg(8, sizeof(cl_long), &c);
@@ -354,20 +354,36 @@ void IntelCPUParallelCopa::final_search()
 		cl::NullRange,
 		cl::NDRange(num_parallel),
 		cl::NDRange(1));
-	std::vector<cl_long> max_val(num_parallel);
-	std::vector<Pair> max_val_pair(num_parallel);
-	queue.enqueueReadBuffer(buffer_max_val, CL_FALSE, 0, buffer_max_bytesize, max_val.data());
-	queue.enqueueReadBuffer(buffer_max_val_pair, CL_TRUE, 0, buffer_max_pair_bytesize, max_val_pair.data());
 
-	solution_value = max_val.at(0);
-	int bestIdx = 0;
+	// find solution in first scan
+	std::vector<cl_long> max_val(num_parallel);
+	std::vector<cl_long> max_val_set(num_parallel);
+	queue.enqueueReadBuffer(buffer_first_max_val, CL_FALSE, 0, buffer_max_bytesize, max_val.data());
+	queue.enqueueReadBuffer(buffer_first_max_val_pair, CL_TRUE, 0, buffer_max_bytesize, max_val_set.data());
+	int maxi = 0; solution_value = max_val.at(0);
 	for (int i = 1; i < max_val.size(); ++i)
+	{
+		if (max_val.at(i) > solution_value) {
+			solution_value = max_val.at(i);
+			maxi = i;
+		}
+	}
+	solution_set = std::bitset<64>(max_val_set.at(maxi));
+
+	// find solution in second scan
+	std::vector<Pair> max_val_pair(num_parallel);
+	queue.enqueueReadBuffer(buffer_second_max_val, CL_FALSE, 0, buffer_max_bytesize, max_val.data());
+	queue.enqueueReadBuffer(buffer_second_max_val_pair, CL_TRUE, 0, buffer_max_pair_bytesize, max_val_pair.data());
+	maxi = -1;
+	for (int i = 0; i < max_val.size(); ++i)
 	{
 		if (max_val.at(i) >= solution_value)
 		{
 			solution_value = max_val.at(i);
-			bestIdx = i;
+			maxi = i;
 		}
 	}
-	solution_set = std::bitset<64>(max_val_pair.at(bestIdx).a_idx + max_val_pair.at(bestIdx).b_idx);
+	if (maxi >= 0) {
+		solution_set = std::bitset<64>(max_val_pair.at(maxi).a_idx + max_val_pair.at(maxi).b_idx);
+	}
 }

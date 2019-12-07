@@ -42,10 +42,14 @@ private:
 	cl::Buffer buffer_B;
 	cl::Buffer buffer_AMaxValues;
 	cl::Buffer buffer_BMaxValues;
+	cl::Buffer buffer_AMaxValuesIdx;
+	cl::Buffer buffer_BMaxValuesIdx;
 	cl::Buffer buffer_pruned;
 	cl::Buffer buffer_max;
-	cl::Buffer buffer_max_val;
-	cl::Buffer buffer_max_val_pair;
+	cl::Buffer buffer_first_max_val;
+	cl::Buffer buffer_first_max_val_pair;
+	cl::Buffer buffer_second_max_val;
+	cl::Buffer buffer_second_max_val_pair;
 
 	// split A and B
 	//  - sort A non-decreasing
