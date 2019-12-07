@@ -60,6 +60,7 @@ private:
     int64_t startNS;
 public:
     Timer() {
+        int32_t retval;
         if ((retval = PAPI_library_init(PAPI_VER_CURRENT)) != PAPI_VER_CURRENT)
         {
             throw InitializerError();

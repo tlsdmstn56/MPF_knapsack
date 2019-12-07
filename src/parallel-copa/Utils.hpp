@@ -24,7 +24,7 @@ public:
 		std::swap(this->filepath, filepath);
 		errmsg = filepath + " is not exists";
 	}
-	const char* what() const
+	const char* what() const noexcept override
 	{
 		return errmsg.c_str();
 	}

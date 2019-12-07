@@ -2,5 +2,5 @@
 	path = external/papi
 	url = https://bitbucket.org/icl/papi.git
 [submodule ".\\external\\cxxopts"]
-	path = .\\external\\cxxopts
+	path = external/cxxopts
 	url = https://github.com/jarro2783/cxxopts.git
