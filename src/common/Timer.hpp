@@ -1,8 +1,7 @@
 #pragma once
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(WIN32)
 #include <windows.h>
-
 #include <exception>
 class InitializerError : public std::exception
 {
@@ -31,11 +30,11 @@ private:
         double freq_to_ns;
     };
     static Initializer init;
-    int64_t startFreq;
+    int64_t startFreq=-1;
     LARGE_INTEGER li;
 
 public:
-    Timer() {}
+	Timer() = default;
     void start() noexcept
     {
         QueryPerformanceCounter(&li);
