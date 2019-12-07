@@ -1,2 +1,9 @@
+# built binaries
 /build
-/external
+/out
+
+# ide config files
+/.vscode
+/.vs
+/CMakeSettings.json
+/.editorconfig
