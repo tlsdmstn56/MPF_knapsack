@@ -36,12 +36,14 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 if (WIN32)
     include_directories(
         ./src
+		./external/cxxopts/include
     )
     set(PAPI_LIBRARY "")
 elseif(UNIX)
     include_directories(
         ./src
         ./external/papi/src
+		./external/cxxopts/include
     )
     link_directories(
         ./external/papi/src

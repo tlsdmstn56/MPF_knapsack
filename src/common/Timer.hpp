@@ -1,8 +1,7 @@
 #pragma once
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(WIN32)
 #include <windows.h>
-
 #include <exception>
 class InitializerError : public std::exception
 {
@@ -15,27 +14,17 @@ class InitializerError : public std::exception
 class Timer
 {
 private:
-    struct Initializer
-    {
-    public:
-        Initializer()
-        {
-
-            LARGE_INTEGER li;
-            if (!QueryPerformanceFrequency(&li))
-            {
-                throw InitializerError();
-            };
-            freq_to_ns = 1.0e9 / static_cast<double>(li.QuadPart);
-        }
-        double freq_to_ns;
-    };
-    static Initializer init;
-    int64_t startFreq;
+    int64_t startFreq=-1;
     LARGE_INTEGER li;
-
+    double freq_to_ns;
 public:
-    Timer() {}
+	Timer() {
+        if (!QueryPerformanceFrequency(&li))
+        {
+            throw InitializerError();
+        };
+        freq_to_ns = 1.0e9 / static_cast<double>(li.QuadPart);
+    };
     void start() noexcept
     {
         QueryPerformanceCounter(&li);
@@ -45,11 +34,9 @@ public:
     {
         QueryPerformanceCounter(&li);
         int64_t endFreq = li.QuadPart;
-        return static_cast<int64_t>((endFreq - startFreq) * init.freq_to_ns);
+        return static_cast<int64_t>((endFreq - startFreq) * freq_to_ns);
     }
 };
-
-Timer::Initializer Timer::init{};
 
 #elif defined(__APPLE__) || defined(__MACH__) || defined(__linux__)
 
@@ -69,25 +56,16 @@ class InitializerError : public std::exception
 
 class Timer
 {
-    friend class Initializer;
-    struct Initializer
-    {
-        Initializer()
-        {
-            if ((retval = PAPI_library_init(PAPI_VER_CURRENT)) != PAPI_VER_CURRENT)
-            {
-                throw InitializerError();
-            }
-        }
-        int32_t retval;
-    };
-
 private:
-    static Initializer init;
     int64_t startNS;
-
 public:
-    Timer() {}
+    Timer() {
+        int32_t retval;
+        if ((retval = PAPI_library_init(PAPI_VER_CURRENT)) != PAPI_VER_CURRENT)
+        {
+            throw InitializerError();
+        }
+    }
     void start() noexcept {
         startNS = PAPI_get_virt_nsec();
     } 
@@ -96,8 +74,6 @@ public:
         return PAPI_get_virt_nsec() - startNS;
     }
 };
-
-Timer::Initializer Timer::init{};
 
 #else
 #error Unknown OS

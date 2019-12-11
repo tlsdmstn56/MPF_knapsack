@@ -20,6 +20,7 @@ public:
             ret.addEntry(std::move(std::make_pair(wt, p)));
         }
         c /= 2;
+		ret.setCapacity(c);
         return ret;
   }
 };
