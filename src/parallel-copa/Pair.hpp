@@ -15,6 +15,6 @@
 struct PACKED Pair
 {
 	Pair() :a_idx(0), b_idx(0) {}
-	cl_long a_idx;
-	cl_long b_idx;
+	cl_int a_idx;
+	cl_int b_idx;
 };

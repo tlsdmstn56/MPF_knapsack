@@ -1,0 +1,7 @@
+# Parallel COPA
+- [ ] Bug fix (different result on different num_threads)
+  - [ ] use cl_int for indexing
+  - [ ] remove all for loop in the kernels
+  - [ ] using cache line alignment to minimize cache miss effect
+- [ ] Optimization following intel opencl optimization guide
+- [ ] Add feature to experiment multiple time and extract data(possibly csv file)

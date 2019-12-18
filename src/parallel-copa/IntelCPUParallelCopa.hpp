@@ -5,13 +5,14 @@
 #include <vector>
 #include <bitset>
 
-#include <CL/cl.h>
+#include <CL/cl.hpp>
 
 #include <common/Timer.hpp>
 #include "Utils.hpp"
 #include "ParallelCopaBase.hpp"
 #include "Triple.hpp"
 #include "Pair.hpp"
+#include "AlignedInt.hpp"
 
 class IntelCPUParallelCopa : protected ParallelCopaBase
 {
@@ -66,24 +67,25 @@ private:
 	// stage 5
 	void final_search();
 
-	cl_long ASize = 0;
-	cl_long BSize = 0;
-	cl_long A_local_size = 0;
-	cl_long B_local_size = 0;
-	cl_long A_buffer_size = 0;
-	cl_long B_buffer_size = 0;
+	cl_int ASize = 0;
+	cl_int BSize = 0;
+	cl_int A_local_size = 0;
+	cl_int B_local_size = 0;
+	cl_int A_buffer_size = 0;
+	cl_int B_buffer_size = 0;
+	cl_int num_parallel = 0;
 
-	cl_long solution_value = 0;
+	cl_int solution_value = 0;
 	std::bitset<64> solution_set;
 
-	void printError(cl_int err, const std::string& msg) const {
+	void printIfError(cl_int err, const std::string& msg) const {
 		if (err != CL_SUCCESS) {
 			std::cout << msg << "\n";
 		}
 	}
 
 	template<typename T>
-	void printBuffer(const cl_long size, const cl::Buffer& buffer, const std::string& name) const {
+	void printBuffer(const cl_int size, const cl::Buffer& buffer, const std::string& name) const {
 		T* t = new T[size]();
 		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(T), t);
 		std::cout << name << "\n";
@@ -95,7 +97,7 @@ private:
 		delete[] t;
 	}
 	template<>
-	void printBuffer<Triple>(const cl_long size, const cl::Buffer& buffer, const std::string& name) const {
+	void printBuffer<Triple>(const cl_int size, const cl::Buffer& buffer, const std::string& name) const {
 		Triple* t = new Triple[size]();
 		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(Triple), t);
 		std::cout << name << "\n";
@@ -107,7 +109,7 @@ private:
 		delete[] t;
 	}
 	template<>
-	void printBuffer<Pair>(const cl_long size, const cl::Buffer& buffer, const std::string& name) const {
+	void printBuffer<Pair>(const cl_int size, const cl::Buffer& buffer, const std::string& name) const {
 		Pair* t = new Pair[size]();
 		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(Pair), t);
 		std::cout << name << "\n";
@@ -115,6 +117,18 @@ private:
 		{
 			const auto& ent = t[i];
 			std::cout << ent.a_idx << " " << ent.b_idx << "\n";
+		}
+		delete[] t;
+	}
+	template<>
+	void printBuffer<AlignedInt>(const cl_int size, const cl::Buffer& buffer, const std::string& name) const {
+		AlignedInt* t = new AlignedInt[size]();
+		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(AlignedInt), t);
+		std::cout << name << "\n";
+		for (size_t i = 0, end = size; i < end; ++i)
+		{
+			const auto& ent = t[i];
+			std::cout << ent.val << " " << ent.val << "\n";
 		}
 		delete[] t;
 	}
