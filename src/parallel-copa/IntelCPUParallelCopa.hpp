@@ -13,12 +13,13 @@
 #include "Triple.hpp"
 #include "Pair.hpp"
 #include "AlignedInt.hpp"
+#include "Quad.hpp"
 
 class IntelCPUParallelCopa : protected ParallelCopaBase
 {
 public:
-	IntelCPUParallelCopa(const int platform_idx, const int device_idx, int num_parallel, const Data& data, const std::string& cl_file_path) :
-		ParallelCopaBase(platform_idx, device_idx, num_parallel, data), cl_file_path(cl_file_path) { }
+	IntelCPUParallelCopa(const int platform_idx, const int device_idx, int num_compute_unit, int num_work_item, const Data& data, const std::string& cl_file_path) :
+		ParallelCopaBase(platform_idx, device_idx, num_work_item, num_compute_unit, data), cl_file_path(cl_file_path) { }
 	int64_t Solve() override;
 	virtual ~IntelCPUParallelCopa()
 	{
@@ -51,6 +52,8 @@ private:
 	cl::Buffer buffer_first_max_val_pair;
 	cl::Buffer buffer_second_max_val;
 	cl::Buffer buffer_second_max_val_pair;
+	cl::Buffer buffer_quad;
+	cl::Buffer buffer_pair2;
 
 	// split A and B
 	//  - sort A non-decreasing
@@ -58,6 +61,7 @@ private:
 	void split_vector() noexcept;
 	// stage 1
 	void parallel_generation();
+	void parallel_generation2();
 	// stage 2
 	void first_max_scan();
 	// stage 3

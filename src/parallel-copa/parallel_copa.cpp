@@ -47,20 +47,22 @@ void printCLSDK() {
 
 bool isNumThreadsValid(int num_work_item, int n)
 {
-	return ((1 << (n / 2)) % num_work_item) == 0;
+	return ((1<<(n>>1)) % num_work_item) == 0;
 }
 
 int main(int argc, char** argv) {
-	int device_idx = 0, platform_idx = 0, n = 10, num_work_item = 1, seed=0;
+	int device_idx = 0, platform_idx = 0, n = 10, num_work_item = 1, seed=0, num_compute_unit=1;
 	string cl_file_path;
 	cxxopts::Options options(argv[0], "Solve kanpsack problem on heterogeous cores using OpenCL");
 	options.add_options()
 		("p,platform", "Platform Index", cxxopts::value<int>(platform_idx)->default_value("0"))
 		("d,device", "Device Index", cxxopts::value<int>(device_idx)->default_value("0"))
-		("wi,", "the number of work items per a group", cxxopts::value<int>(num_work_item)->default_value("1"))
-		("n,", "The number of data", cxxopts::value<int>(n)->default_value("10"))
+		("c,size_cu", "the number of compute units to be used", cxxopts::value<int>(num_compute_unit)->default_value("1"))
+		("w,size_wg", "the number of work items per a group", cxxopts::value<int>(num_work_item)->default_value("1"))
+		("n,data_size", "The number of data", cxxopts::value<int>(n)->default_value("10"))
 		("s,seed", "Seed for data generator", cxxopts::value<int>(seed)->default_value("0"))
-		("f,cl_file_path", "path of copa_kernels.cl file", cxxopts::value<string>(cl_file_path)->default_value("src/parallel-copa/copa_kernels.cl"))
+		("f,cl_file_path", "path of copa_kernels.cl file", 
+			cxxopts::value<string>(cl_file_path)->default_value("src/parallel-copa/copa_kernels.cl"))
 		("list", "List platforms and devices")
 		("h,help", "Print help")
 		;
@@ -101,17 +103,18 @@ int main(int argc, char** argv) {
 	}
 	
 	// FIXME:
-	n = 10; seed = 0;
+	/*n = 10; seed = 0;
 	platform_idx = 0; 
 	device_idx = 1;
-	num_work_item = 32;
+	num_work_item = 4;
+	num_compute_unit = 2;*/
 	Data data = DataGenerator::generate(n, seed);
 
 	cl_int solution = 0;
 	bitset<64> solutionSet;
 	int64_t time=0;
 	try {
-		IntelCPUParallelCopa copa(platform_idx, device_idx, num_work_item,
+		IntelCPUParallelCopa copa(platform_idx, device_idx, num_compute_unit, num_work_item,
 			data, cl_file_path);
 		solution = copa.Solve();
 		solutionSet = copa.getSolutionSet();

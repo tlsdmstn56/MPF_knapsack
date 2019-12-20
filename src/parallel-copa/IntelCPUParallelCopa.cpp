@@ -32,7 +32,6 @@ int64_t IntelCPUParallelCopa::Solve()
 	BSize = B.size();
 	A_buffer_size = (1ll << ASize);
 	B_buffer_size = (1ll << BSize);
-	num_parallel = A_buffer_size / num_work_item;
 	A_local_size = num_work_item;
 	B_local_size = num_work_item;
 
@@ -44,7 +43,7 @@ int64_t IntelCPUParallelCopa::Solve()
 	printIfError(err, "buffer_B");
 
 	// stage 1: parallel generation
-	parallel_generation();
+	parallel_generation2();
 	// stage 2: first max scan
 	first_max_scan();
 	// stage 3: prune
@@ -81,6 +80,127 @@ void IntelCPUParallelCopa::split_vector() noexcept
 	std::sort(B.begin(), B.end(), [](const Triple& a, const Triple& b) { return a.w > b.w; });
 }
 
+void IntelCPUParallelCopa::parallel_generation2() {
+	cl_int err;
+	// buffer init
+	cl::Buffer buffer_tmp = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(Triple) * (1ll << ((ASize > BSize ? ASize : BSize) - 1)), NULL, &err);
+	printIfError(err, "buffer_tmp");
+	cl::Buffer buffer_tmp2 = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(Triple) * (1ll << ((ASize > BSize ? ASize : BSize) - 1)), NULL, &err);
+	printIfError(err, "buffer_tmp2");
+	cl::Buffer buffer_arg = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(Triple), NULL, &err);
+	printIfError(err, "buffer_arg");
+	cl::Buffer buffer_quad = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(Quad)*num_compute_unit*2, NULL, &err);
+	printIfError(err, "buffer_quad");
+	// initial values
+	const Triple init{ 1, 0, 0 };
+	err = queue.enqueueWriteBuffer(buffer_A, CL_FALSE, 0, sizeof(Triple), &init);
+	printIfError(err, "enqueue initial value to buffer_A");
+	err = queue.enqueueWriteBuffer(buffer_B, CL_FALSE, 0, sizeof(Triple), &init);
+	printIfError(err, "enqueue initial value to buffer_B");
+	// define common kernels
+	//     add_triple
+	cl::Kernel add_triple(program, "add_triple", &err);
+	printIfError(err, "add_triple kernel error");
+	add_triple.setArg(0, buffer_tmp);
+	add_triple.setArg(1, buffer_tmp2);
+	add_triple.setArg(2, buffer_arg);
+	// set logN
+	int logN = -1;
+	cl_int _num_compute_unit = num_compute_unit;
+	while (_num_compute_unit) {
+		_num_compute_unit >>= 1;
+		++logN;
+	}
+
+	///////////////////////////////////////
+	// Generate A array
+	///////////////////////////////////////
+	//     step1point2
+	cl::Kernel step_1_2(program, "Step1Point2", &err);
+	printIfError(err, "Step1Point2 kernel error");
+	step_1_2.setArg(0, buffer_quad);
+	step_1_2.setArg(1, buffer_tmp);
+	step_1_2.setArg(2, buffer_tmp2);
+	//     step2
+	cl::Kernel step_2(program, "Step2", &err);
+	printIfError(err, "Step2 kernel error");
+	step_2.setArg(0, buffer_tmp);
+	step_2.setArg(1, buffer_tmp2);
+	step_2.setArg(2, buffer_A);
+	step_2.setArg(3, buffer_quad);
+	std::vector<Quad> quad_inits;
+	for (int i = 0; i < ASize; ++i)
+	{
+		const cl_int size = (1ll << i);
+		const cl_int bytesize = sizeof(Triple) * size;
+		queue.enqueueCopyBuffer(buffer_A, buffer_tmp, 0, 0, bytesize);
+		queue.enqueueWriteBuffer(buffer_arg, CL_FALSE, 0, sizeof(Triple), &(A.at(i)));
+		queue.enqueueNDRangeKernel(add_triple,
+			cl::NullRange,
+			cl::NDRange(size),
+			cl::NullRange);
+		
+		quad_inits.emplace_back(0, size - 1, 0, size - 1);
+		queue.enqueueWriteBuffer(buffer_quad, CL_FALSE, 0, sizeof(Quad), &quad_inits.back());
+		
+		for (int j = 0; j < logN; ++j)
+		{
+			queue.enqueueNDRangeKernel(step_1_2,
+				cl::NullRange,
+				cl::NDRange(1 << j),
+				cl::NullRange);
+		
+		}
+		queue.enqueueNDRangeKernel(step_2,
+			cl::NullRange,
+			cl::NDRange(num_compute_unit),
+			cl::NullRange);
+	}
+	///////////////////////////////////////
+	// Generate B array
+	///////////////////////////////////////
+	//     step1point2
+	cl::Kernel step_1_2_rev(program, "Step1Point2_reverse", &err);
+	printIfError(err, "Step1Point2_reverse kernel error");
+	step_1_2_rev.setArg(0, buffer_quad);
+	step_1_2_rev.setArg(1, buffer_tmp);
+	step_1_2_rev.setArg(2, buffer_tmp2);
+	//     step2
+	cl::Kernel step_2_rev(program, "Step2_reverse", &err);
+	printIfError(err, "Step2 kernel error");
+	step_2_rev.setArg(0, buffer_tmp);
+	step_2_rev.setArg(1, buffer_tmp2);
+	step_2_rev.setArg(2, buffer_B);
+	step_2_rev.setArg(3, buffer_quad);
+	for (int i = 0; i < BSize; ++i)
+	{
+		const cl_int size = (1ll << i);
+		const cl_int bytesize = sizeof(Triple) * size;
+		queue.enqueueCopyBuffer(buffer_B, buffer_tmp, 0, 0, bytesize);
+		queue.enqueueWriteBuffer(buffer_arg, CL_FALSE, 0, sizeof(Triple), &(B.at(i)));
+		add_triple.setArg(2, buffer_arg);
+		queue.enqueueNDRangeKernel(add_triple,
+			cl::NullRange,
+			cl::NDRange(size),
+			cl::NullRange);
+		quad_inits.emplace_back(0, size - 1, 0, size - 1);
+		queue.enqueueWriteBuffer(buffer_quad, CL_FALSE, 0, sizeof(Quad), &quad_inits.back());
+		for (int j = 0; j < logN; ++j)
+		{
+			queue.enqueueNDRangeKernel(step_1_2_rev,	
+				cl::NullRange,
+				cl::NDRange(1 << j),
+				cl::NullRange);
+		}
+		queue.enqueueNDRangeKernel(step_2_rev,
+			cl::NullRange,
+			cl::NDRange(num_compute_unit),
+			cl::NullRange);
+	}
+	/*printBuffer<cl_int>(1 << 5, buffer_A, "buffer_A");
+	printBuffer<cl_int>(1 << 5, buffer_B, "buffer_B");*/
+}
+
 void IntelCPUParallelCopa::parallel_generation()
 {
 	cl_int err;
@@ -105,9 +225,9 @@ void IntelCPUParallelCopa::parallel_generation()
 	add_triple.setArg(2, buffer_arg);
 	// set sequential threshold
 	int seq_threshold = 0;
-	cl_int _num_parallel = num_parallel;
-	while (_num_parallel) {
-		_num_parallel >>= 1;
+	cl_int _num_compute_unit = num_compute_unit;
+	while (_num_compute_unit) {
+		_num_compute_unit >>= 1;
 		++seq_threshold;
 	}
 
@@ -134,17 +254,13 @@ void IntelCPUParallelCopa::parallel_generation()
 			cl::NullRange,
 			cl::NDRange(size),
 			cl::NullRange);
-		//err = queue.enqueueFillBuffer(buffer_A, -1, 0, bytesize << 1);
+		// err = queue.enqueueFillBuffer(buffer_A, -1, 0, bytesize << 1);
 		printIfError(err, "error while filling buffer_A with -1");
 		merge_array_parallel_a.setArg(3, sizeof(cl_int), &size);
 		queue.enqueueNDRangeKernel(merge_array_sequential_a,
 			cl::NullRange,
 			cl::NDRange(1),
 			cl::NDRange(1));
-		
-		// debug only -----------------------------------------------------------
-		//printBuffer(size, bytesize);
-		// debug only -----------------------------------------------------------
 	}
 	for (int i = seq_threshold; i < ASize; ++i)
 	{
@@ -157,19 +273,14 @@ void IntelCPUParallelCopa::parallel_generation()
 			cl::NullRange,
 			cl::NDRange(size),
 			cl::NullRange);
-		queue.finish();
-		for (_num_parallel = num_parallel; _num_parallel > 0; _num_parallel >>= 1) {
-			cl_int local_size = size / _num_parallel;
+		for (_num_compute_unit = num_compute_unit; _num_compute_unit > 0; _num_compute_unit >>= 1) {
+			cl_int local_size = size / _num_compute_unit;
 			merge_array_parallel_a.setArg(3, sizeof(cl_int), &local_size);
 			queue.enqueueNDRangeKernel(merge_array_parallel_a,
 				cl::NullRange,
-				cl::NDRange(_num_parallel),
+				cl::NDRange(_num_compute_unit),
 				cl::NDRange(1));
-			queue.finish();
 		}
-		// debug only -----------------------------------------------------------
-		//printBuffer(size, bytesize);
-		// debug only -----------------------------------------------------------
 	}
 	// ----------------------------
 	// Parallel Generation for B
@@ -199,10 +310,6 @@ void IntelCPUParallelCopa::parallel_generation()
 			cl::NullRange,
 			cl::NDRange(1),
 			cl::NDRange(1));
-		queue.finish(); // synchronization point
-		// debug only -----------------------------------------------------------
-		//printBuffer(size, bytesize);
-		// debug only -----------------------------------------------------------
 	}
 	for (int i = seq_threshold; i < BSize; ++i)
 	{
@@ -215,29 +322,31 @@ void IntelCPUParallelCopa::parallel_generation()
 			cl::NullRange,
 			cl::NDRange(size),
 			cl::NullRange);
-		queue.finish();
-		for (_num_parallel = num_parallel; _num_parallel > 0; _num_parallel >>= 1) {
-			cl_int local_size = size / _num_parallel;
+		for (_num_compute_unit = num_compute_unit; _num_compute_unit > 0; _num_compute_unit >>= 1) {
+			cl_int local_size = size / _num_compute_unit;
 			merge_array_parallel_b.setArg(3, sizeof(cl_int), &local_size);
 			queue.enqueueNDRangeKernel(merge_array_parallel_b,
 				cl::NullRange,
-				cl::NDRange(_num_parallel),
+				cl::NDRange(_num_compute_unit),
 				cl::NDRange(1));
-			queue.finish();
 		}
 		// devel only -----------------------------------------------------------
 		//printBuffer(size, bytesize);
 		// devel only -----------------------------------------------------------
 	}
 	//printBuffer(A)
+	/*printBuffer<cl_int>(1<<5, buffer_A, "buffer_A");
+	printBuffer<cl_int>(1<<5, buffer_B, "buffer_B");*/
 }
 
+const cl_int MINUS_ONE = -1;
+const cl_int ZERO = 0;
 
 void IntelCPUParallelCopa::first_max_scan()
 {
 	cl_int err;
-	const size_t bytesize = sizeof(AlignedInt) * num_parallel;
-	const cl_int ABufferSize = (1ll << ASize);
+	const size_t bytesize = sizeof(AlignedInt) * num_compute_unit;
+	const cl_int ABufferSize = (1 << ASize);
 	buffer_AMaxValues = cl::Buffer(context, CL_MEM_READ_WRITE, bytesize);
 	buffer_AMaxValuesIdx = cl::Buffer(context, CL_MEM_READ_WRITE, bytesize);
 	cl::Kernel get_max_value_a(program, "first_max_scan", &err);
@@ -245,13 +354,14 @@ void IntelCPUParallelCopa::first_max_scan()
 	get_max_value_a.setArg(0, buffer_A);
 	get_max_value_a.setArg(1, buffer_AMaxValues);
 	get_max_value_a.setArg(2, buffer_AMaxValuesIdx);
-	queue.enqueueFillBuffer(buffer_AMaxValues, -1, 0, bytesize);
+	get_max_value_a.setArg(3, sizeof(cl_int), &MINUS_ONE);
+	//queue.enqueueFillBuffer(buffer_AMaxValues, -1, 0, bytesize);
 	queue.enqueueNDRangeKernel(get_max_value_a,
 		cl::NullRange,
 		cl::NDRange(ABufferSize),
-		cl::NDRange(ABufferSize /num_parallel));
+		num_work_item);
 
-	const cl_int BBufferSize = (1ll << BSize);
+	const cl_int BBufferSize = (1 << BSize);
 	buffer_BMaxValues = cl::Buffer(context, CL_MEM_READ_WRITE, bytesize);
 	buffer_BMaxValuesIdx = cl::Buffer(context, CL_MEM_READ_WRITE, bytesize);
 	cl::Kernel get_max_value_b(program, "first_max_scan", &err);
@@ -259,24 +369,25 @@ void IntelCPUParallelCopa::first_max_scan()
 	get_max_value_b.setArg(0, buffer_B);
 	get_max_value_b.setArg(1, buffer_BMaxValues);
 	get_max_value_b.setArg(2, buffer_BMaxValuesIdx);
-	queue.enqueueFillBuffer(buffer_BMaxValues, -1, 0, bytesize);
+	get_max_value_b.setArg(3, sizeof(cl_int), &MINUS_ONE);
+	//queue.enqueueFillBuffer(buffer_BMaxValues, -1, 0, bytesize);
 	queue.enqueueNDRangeKernel(get_max_value_b,
 		cl::NullRange,
 		cl::NDRange(BBufferSize),
-		cl::NDRange(BBufferSize / num_parallel));
-	queue.finish();
-	/*printBuffer<cl_int>(num_parallel, buffer_AMaxValues, "buffer_AMaxValues");
-	printBuffer<cl_int>(num_parallel, buffer_BMaxValues, "buffer_BMaxValues");*/
+		num_work_item);
+	/*printBuffer<cl_int>(num_compute_unit, buffer_AMaxValues, "AMaxValues: after first scan ");
+	printBuffer<cl_int>(num_compute_unit, buffer_BMaxValues, "BMaxValues: after first scan ");*/
 }
 
 
 void IntelCPUParallelCopa::prune()
 {
-	const size_t buffers_pruned_bytesize = sizeof(Pair) * num_parallel * 2;
+	const size_t buffers_pruned_bytesize = sizeof(Pair) * num_compute_unit * 2;
+	//(1ll << ASize)
 	buffer_pruned = cl::Buffer(context, CL_MEM_READ_WRITE, buffers_pruned_bytesize);
 	queue.enqueueFillBuffer(buffer_pruned, -1, 0, buffers_pruned_bytesize);
-	buffer_first_max_val = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(AlignedInt)*num_parallel);
-	buffer_first_max_val_pair = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(AlignedInt) * num_parallel);
+	buffer_first_max_val = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(AlignedInt)*num_compute_unit);
+	buffer_first_max_val_pair = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(AlignedInt) * num_compute_unit);
 	cl_int err;
 	cl::Kernel prune_kernel(program, "prune", &err);
 	printIfError(err, "error in prune_parallel ");
@@ -294,18 +405,19 @@ void IntelCPUParallelCopa::prune()
 	prune_kernel.setArg(9, sizeof(cl_int), &A_local_size);
 	prune_kernel.setArg(10, sizeof(cl_int), &B_local_size);
 	prune_kernel.setArg(11, sizeof(cl_int), &c);
-	prune_kernel.setArg(12, sizeof(cl_int), &num_parallel);
+	prune_kernel.setArg(12, sizeof(cl_int), &num_compute_unit);
+	prune_kernel.setArg(13, sizeof(cl_int), &MINUS_ONE);
+	prune_kernel.setArg(14, sizeof(cl_int), &ZERO);
 	queue.enqueueNDRangeKernel(prune_kernel,
 		cl::NullRange,
-		cl::NDRange(num_parallel),
-		cl::NDRange(1));
-	queue.finish();
-	printBuffer<Pair>(num_parallel * 2, buffer_pruned,"after prunning");
+		cl::NDRange(num_compute_unit*num_compute_unit),
+		cl::NDRange(num_compute_unit));
+	/*printBuffer<Pair>(num_compute_unit * 2, buffer_pruned,"after prunning");*/
 }
 
 void IntelCPUParallelCopa::second_max_scan()
 {
-	const size_t buffer_max_size = sizeof(cl_int) * 2 * B_local_size * num_parallel;
+	const size_t buffer_max_size = sizeof(cl_int) * 2 * B_local_size * num_compute_unit;
 	cl_int err;
 	buffer_max = cl::Buffer(context, CL_MEM_READ_WRITE, buffer_max_size, NULL, &err);
 	queue.enqueueFillBuffer(buffer_max, -1, 0, buffer_max_size);
@@ -318,19 +430,18 @@ void IntelCPUParallelCopa::second_max_scan()
 	second_max_scan_kernel.setArg(3, buffer_max);
 	second_max_scan_kernel.setArg(4, sizeof(cl_int), &A_local_size);
 	second_max_scan_kernel.setArg(5, sizeof(cl_int), &B_local_size);
-	// printBuffer<Pair>(2 * num_parallel, buffer_pruned, "second_max_scan");
+	// printBuffer<Pair>(2 * num_compute_unit, buffer_pruned, "second_max_scan");
 	queue.enqueueNDRangeKernel(second_max_scan_kernel,
 		cl::NullRange,
-		cl::NDRange(num_parallel),
+		cl::NDRange(num_compute_unit),
 		cl::NDRange(1));
-	queue.finish();
 	
 }
 
 void IntelCPUParallelCopa::final_search()
 {
-	const size_t buffer_max_bytesize = num_parallel * sizeof(cl_int);
-	const size_t buffer_max_pair_bytesize = num_parallel * sizeof(Pair);
+	const size_t buffer_max_bytesize = num_compute_unit * sizeof(cl_int);
+	const size_t buffer_max_pair_bytesize = num_compute_unit * sizeof(Pair);
 	cl_int err;
 	buffer_second_max_val = cl::Buffer(context, CL_MEM_READ_WRITE, buffer_max_bytesize, NULL, &err);
 	printIfError(err, "buffer_max_val");
@@ -348,15 +459,15 @@ void IntelCPUParallelCopa::final_search()
 	final_search_kernel.setArg(6, sizeof(cl_int), &A_local_size);
 	final_search_kernel.setArg(7, sizeof(cl_int), &B_local_size);
 	final_search_kernel.setArg(8, sizeof(cl_int), &c);
-	final_search_kernel.setArg(9, sizeof(cl_int), &num_parallel);
+	final_search_kernel.setArg(9, sizeof(cl_int), &num_compute_unit);
 	queue.enqueueNDRangeKernel(final_search_kernel,
 		cl::NullRange,
-		cl::NDRange(num_parallel),
+		cl::NDRange(num_compute_unit),
 		cl::NDRange(1));
 
 	// find solution in first scan
-	std::vector<cl_int> max_val(num_parallel);
-	std::vector<cl_int> max_val_set(num_parallel);
+	std::vector<cl_int> max_val(num_compute_unit);
+	std::vector<cl_int> max_val_set(num_compute_unit);
 	queue.enqueueReadBuffer(buffer_first_max_val, CL_FALSE, 0, buffer_max_bytesize, max_val.data());
 	queue.enqueueReadBuffer(buffer_first_max_val_pair, CL_TRUE, 0, buffer_max_bytesize, max_val_set.data());
 	int maxi = 0; solution_value = max_val.at(0);
@@ -370,7 +481,7 @@ void IntelCPUParallelCopa::final_search()
 	solution_set = std::bitset<64>(max_val_set.at(maxi));
 
 	// find solution in second scan
-	std::vector<Pair> max_val_pair(num_parallel);
+	std::vector<Pair> max_val_pair(num_compute_unit);
 	queue.enqueueReadBuffer(buffer_second_max_val, CL_FALSE, 0, buffer_max_bytesize, max_val.data());
 	queue.enqueueReadBuffer(buffer_second_max_val_pair, CL_TRUE, 0, buffer_max_pair_bytesize, max_val_pair.data());
 	maxi = -1;
