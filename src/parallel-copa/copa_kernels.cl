@@ -15,6 +15,23 @@
 #endif
 
 ////////////////////////////
+// Debug Helper
+////////////////////////////
+//void print_by_local_id(int id, __constant char* str, int data) {
+//	if (get_local_id(0) == id) {
+//		printf("[gid: %d- lid: %d] %s: %ld\n", id, str, data);
+//	}
+//}
+//
+//void print_by_global_id(int id, __constant char* str, int data) {
+//	if (get_global_id(0) == id) {
+//		printf("[gid: %d- lid: %d] %s: %ld\n", id, str, data);
+//	}
+//}
+
+#define print(str, data) printf("[gid: %d- lid: %d] "#str": %ld\n", get_global_id(0), get_local_id(0), data)
+
+////////////////////////////
 // Data Structures
 ////////////////////////////
 typedef struct PACKED Triple
@@ -57,15 +74,6 @@ inline int floor_half(int n)
 {
 	return (n >> 1);
 }
-
-//inline int min(int a, int b)
-//{
-//	return (a < b) ? a : b;
-//}
-//inline int max(int a, int b)
-//{
-//	return (a > b) ? a : b;
-//}
 
 int sort_search_gt(int low, int high, __global Triple* a, int key)
 {
@@ -160,7 +168,7 @@ bool is_valid_pair(__global Triple* A, __global Triple* B,
 		// condition 2 for median pair
 		if (B[index1].w == b || B[index2].w == b)
 		{
-			*arr = 'A';
+			*arr = 1;
 			return true;
 		}
 	}
@@ -175,7 +183,7 @@ bool is_valid_pair(__global Triple* A, __global Triple* B,
 		// condition 2 for median pair
 		if (A[index1].w == a || A[index2].w == a)
 		{
-			*arr = 'B';
+			*arr = 2;
 			return true;
 		}
 	}
@@ -204,7 +212,7 @@ bool is_valid_pair_reverse(__global Triple* A, __global  Triple* B,
 		// condition 2 for median pair
 		if (B[index1].w == b || B[index2].w == b)
 		{
-			*arr = 'A';
+			*arr = 1;
 			return true;
 		}
 	}
@@ -219,16 +227,17 @@ bool is_valid_pair_reverse(__global Triple* A, __global  Triple* B,
 		// condition 2 for median pair
 		if (A[index1].w == a || A[index2].w == a)
 		{
-			*arr = 'B';
+			*arr = 2;
 			return true;
 		}
 	}
 	return false;
 }
 
-Pair2 two_sequence_median(__global Triple* A, __global  Triple* B,
+void two_sequence_median(__global Triple* A, __global  Triple* B,
 	int lowA_, int highA_,
-	int lowB_, int highB_)
+	int lowB_, int highB_,
+	Pair2* pair)
 {
 	int lowA = lowA_, lowB = lowB_, highA = highA_, highB = highB_, nA, nB;
 	int u, v, w;
@@ -253,29 +262,26 @@ Pair2 two_sequence_median(__global Triple* A, __global  Triple* B,
 			highB -= w;
 		}
 	}
-
-	int i, j;
-	Pair2 ans;
 	int arr;
-	for (i = max(0, u - 1); i <= u + 1; ++i)
+	for (int i = max(0, u - 1); i <= u + 1; ++i)
 	{
-		for (j = max(0, v - 1); j <= v + 1; ++j)
+		for (int j = max(0, v - 1); j <= v + 1; ++j)
 		{
 			if (is_valid_pair(A, B, i, j, lowA_, highA_, lowB_, highB_, &arr))
 			{
-				ans.first = i;
-				ans.second = j;
-				ans.arr = arr;
+				pair->first = i;
+				pair->second = j;
+				pair->arr = arr;
 			}
 		}
 	}
-	return ans;
 }
 
 // function to find the median of two non-decreasing sequences
-Pair2  two_sequence_median_reverse(__global Triple* A, __global  Triple* B,
+void two_sequence_median_reverse(__global Triple* A, __global  Triple* B,
 	int lowA_, int highA_,
-	int lowB_, int highB_)
+	int lowB_, int highB_,
+	Pair2* pair)
 {
 	int lowA = lowA_, lowB = lowB_, highA = highA_, highB = highB_, nA, nB;
 	int u, v, w;
@@ -300,8 +306,6 @@ Pair2  two_sequence_median_reverse(__global Triple* A, __global  Triple* B,
 			highB -= w;
 		}
 	}
-
-	Pair2 ans;
 	int arr;
 	for (int i = max(0, u - 1), end = min(r - 1, u + 1); i <= end; ++i)
 	{
@@ -309,13 +313,12 @@ Pair2  two_sequence_median_reverse(__global Triple* A, __global  Triple* B,
 		{
 			if (is_valid_pair_reverse(A, B, i, j, lowA_, highA_, lowB_, highB_, &arr))
 			{
-				ans.first = i;
-				ans.second = j;
-				ans.arr = arr;
+				pair->first = i;
+				pair->second = j;
+				pair->arr = arr;
 			}
 		}
 	}
-	return ans;
 }
 
 void sequential_merge(__global Triple* A, __global Triple* B, __global Triple* C, int lowA, int highA, int lowB, int highB, int offsetC)
@@ -371,18 +374,28 @@ void sequential_merge_reverse(__global Triple* A, __global Triple* B, __global T
 __kernel void Step1Point2(__global Quad* quads, __global Triple* A, __global Triple* B)
 {
 	int p1, q1, p2, q2;
-	int i = get_global_id(0);
+	const int i = get_global_id(0);
 	// Step 1.2.1
-	// vector<int> A_, B_;
-	// copy(A+quads[i].startA, A+(quads[i].endA+1), back_inserter(A_));
-	// copy(B+quads[i].startB, B+(quads[i].endB+1), back_inserter(B_));
-	Pair2 medianPair = two_sequence_median(A, B, quads[i].startA, quads[i].endA,
-		quads[i].startB, quads[i].endB);
+	/*print(startA, quads[i].startA);
+	print(endA, quads[i].endA);
+	print(startB, quads[i].startB);
+	print(endB, quads[i].endB);*/
+	Pair2 medianPair;
+	two_sequence_median(A, B, 
+		quads[i].startA, quads[i].endA,
+		quads[i].startB, quads[i].endB,
+		&medianPair);
+	/*print(medianPair.first, medianPair.first);
+	print(medianPair.second,   medianPair.second);*/
 	medianPair.first += quads[i].startA + 1;
 	medianPair.second += quads[i].startB + 1;
+	/*print(medianPair.first, medianPair.first);
+	print(medianPair.second, medianPair.second);*/
+	
+
 
 	// Step 1.2.2
-	if (medianPair.arr == 'A')
+	if (medianPair.arr == 1)
 	{
 		p1 = medianPair.first;
 		q1 = medianPair.first + 1;
@@ -434,16 +447,15 @@ __kernel void Step1Point2_reverse(__global Quad* quads, __global Triple* A, __gl
 	int p1, q1, p2, q2;
 
 	// Step 1.2.1
-	// vector<int> A_, B_;
-	// copy(A+quads[i].startA, A+(quads[i].endA+1), back_inserter(A_));
-	// copy(B+quads[i].startB, B+(quads[i].endB+1), back_inserter(B_));
-	Pair2 medianPair = two_sequence_median_reverse(A, B, quads[i].startA, quads[i].endA,
-		quads[i].startB, quads[i].endB);
+	Pair2 medianPair;
+	two_sequence_median_reverse(A, B, quads[i].startA, quads[i].endA,
+		quads[i].startB, quads[i].endB,
+		&medianPair);
 	medianPair.first += quads[i].startA + 1;
 	medianPair.second += quads[i].startB + 1;
 
 	// Step 1.2.2
-	if (medianPair.arr == 'A')
+	if (medianPair.arr == 1)
 	{
 		p2 = medianPair.second;
 		q2 = medianPair.second + 1;
@@ -652,10 +664,6 @@ __kernel void merge_array_parallel_b(
 
 }
 
-void print_log(int group, __constant char* str, int data) {
-	printf("[%d] %s: %ld\n", group, str, data);
-}
-
 __kernel void prune(
 	__global Triple* A,
 	__global Triple* B,
@@ -745,18 +753,30 @@ __kernel void second_max_scan(
 	const int A_local_size,
 	const int B_local_size)
 {
-	const int i = get_group_id(0);
-	__global Pair* this_remained_pairs = &remained_pairs[i * 2];
+	//const int i = get_group_id(0);
+	//__global Pair* this_remained_pairs = &remained_pairs[i * 2];
 
-	for (int t = 0; (t < 2) && (this_remained_pairs[t].a_idx >= 0l); ++t) {
-		__global Triple* this_B = &B[this_remained_pairs[t].b_idx];
-		__global int* this_max_out = &max_out[2 * B_local_size * i + t * B_local_size];
-		this_max_out[B_local_size - 1] = this_B[B_local_size - 1].p;
-		for (int j = B_local_size - 2; j >= 0l; --j)
-		{
-			this_max_out[j] = (this_B[j].p > this_max_out[j + 1]) ?
-				this_B[j].p : this_max_out[j + 1];
-		}
+	//for (int t = 0; (t < 2) && (this_remained_pairs[t].a_idx >= 0l); ++t) {
+	//	__global Triple* this_B = &B[this_remained_pairs[t].b_idx];
+	//	__global int* this_max_out = &max_out[2 * B_local_size * i + t * B_local_size];
+	//	this_max_out[B_local_size - 1] = this_B[B_local_size - 1].p;
+	//	for (int j = B_local_size - 2; j >= 0l; --j)
+	//	{
+	//		this_max_out[j] = (this_B[j].p > this_max_out[j + 1]) ?
+	//			this_B[j].p : this_max_out[j + 1];
+	//	}
+	//}
+	const int i = get_group_id(0);
+	if (remained_pairs[i].a_idx < 0l) {
+		return;
+	}
+	__global Triple* this_B = &B[remained_pairs[i].b_idx];
+	__global int* this_max_out = &max_out[B_local_size * i];
+	atomic_max(&this_max_out[B_local_size - 1], this_B[B_local_size - 1].p);
+	for (int j = B_local_size - 2; j >= 0l; --j)
+	{
+		atomic_max(&this_max_out[j], this_B[j].p);
+		atomic_max(&this_max_out[j], this_max_out[j + 1]);
 	}
 }
 
@@ -772,31 +792,24 @@ __kernel void final_search(
 	const int c,
 	const int k)
 {
-	int t = 0, maxvalue = 0;
-	Pair X; X.a_idx = 0; X.b_idx = 0;
 	const int i = get_group_id(0);
-	__global Pair* this_remained_pairs = &remained_pairs[i * 2];
-
-	for (int t = 0; (t < 2) && (this_remained_pairs[t].a_idx >= 0l); ++t) {
-		__global Triple* this_A = &A[this_remained_pairs[t].a_idx];
-		__global Triple* this_B = &B[this_remained_pairs[t].b_idx];
-		__global int* this_max = &max[2 * B_local_size * i + t * B_local_size];
-		int x = 0, y = 0;
-		while (x < A_local_size && y < B_local_size)
-		{
-			if ((this_A[x].w + this_B[y].w) > c) {
-				y++;
-				continue;
-			}
-			if ((this_A[x].p + this_max[y]) > maxvalue)
-			{
-				maxvalue = this_A[x].p + this_max[y];
-				X.a_idx = this_A[x].set;
-				X.b_idx = this_B[x].set;
-			}
-			x++;
-		}
+	if (remained_pairs[i].a_idx < 0l) {
+		return;
 	}
-	max_val_out[i] = maxvalue;
-	max_val_pair_out[i] = X;
+	const int out_i = i >> 1;
+	atomic_min(&max_val_out[out_i],0);
+	__global Triple* this_A = &A[remained_pairs[i].a_idx];
+	__global Triple* this_B = &B[remained_pairs[i].b_idx];
+	__global int* this_max = &max[i * B_local_size];
+	int x = 0, y = 0;
+	while (x < A_local_size && y < B_local_size)
+	{
+		if ((this_A[x].w + this_B[y].w) > c) {
+			y++;
+			continue;
+		}
+		atomic_min(&max_val_out[out_i], this_A[x].p + this_max[y]);
+		x++;
+	}
 }
+

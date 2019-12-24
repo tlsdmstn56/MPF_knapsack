@@ -71,6 +71,12 @@ private:
 	// stage 5
 	void final_search();
 
+	// constants
+	const cl_int MINUS_ONE = -1;
+	const cl_int ZERO = 0; 
+	const Triple init{ 1, 0, 0 };
+
+	std::vector<Quad> quad_inits;
 	cl_int ASize = 0;
 	cl_int BSize = 0;
 	cl_int A_local_size = 0;
@@ -90,51 +96,59 @@ private:
 
 	template<typename T>
 	void printBuffer(const cl_int size, const cl::Buffer& buffer, const std::string& name) const {
-		T* t = new T[size]();
-		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(T), t);
+		std::unique_ptr<T[]> t(new T[size]());
+		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(T), t.get());
 		std::cout << name << "\n";
 		for (size_t i = 0, end = size; i < end; ++i)
 		{
 			const T& ent = t[i];
 			std::cout << ent << "\n";
 		}
-		delete[] t;
 	}
 	template<>
 	void printBuffer<Triple>(const cl_int size, const cl::Buffer& buffer, const std::string& name) const {
-		Triple* t = new Triple[size]();
-		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(Triple), t);
+		std::unique_ptr<Triple[]> t(new Triple[size]());
+		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(Triple), t.get());
 		std::cout << name << "\n";
 		for (size_t i = 0, end = size; i < end; ++i)
 		{
 			const auto& ent = t[i];
 			std::cout << ent.w << " " << ent.p << " " << ent.set << "\n";
 		}
-		delete[] t;
 	}
 	template<>
 	void printBuffer<Pair>(const cl_int size, const cl::Buffer& buffer, const std::string& name) const {
-		Pair* t = new Pair[size]();
-		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(Pair), t);
+		std::unique_ptr<Pair[]> t(new Pair[size]());
+		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(Pair), t.get());
 		std::cout << name << "\n";
 		for (size_t i = 0, end = size; i < end; ++i)
 		{
 			const auto& ent = t[i];
 			std::cout << ent.a_idx << " " << ent.b_idx << "\n";
 		}
-		delete[] t;
 	}
 	template<>
 	void printBuffer<AlignedInt>(const cl_int size, const cl::Buffer& buffer, const std::string& name) const {
-		AlignedInt* t = new AlignedInt[size]();
-		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(AlignedInt), t);
+		std::unique_ptr<AlignedInt[]> t(new AlignedInt[size]());
+		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(AlignedInt), t.get());
 		std::cout << name << "\n";
 		for (size_t i = 0, end = size; i < end; ++i)
 		{
 			const auto& ent = t[i];
 			std::cout << ent.val << " " << ent.val << "\n";
 		}
-		delete[] t;
+	}
+	template<>
+	void printBuffer<Quad>(const cl_int size, const cl::Buffer& buffer, const std::string& name) const {
+		std::unique_ptr<Quad[]> t(new Quad[size]());
+		queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size * sizeof(Quad), t.get());
+		std::cout << name << "\n";
+		for (size_t i = 0, end = size; i < end; ++i)
+		{
+			const auto& ent = t[i];
+			std::cout << "(" << ent.startA << ", " << ent.endA
+				<< ", " << ent.startB << ", " << ent.endB << ")\n";
+		}
 	}
 	int64_t elapsedTime=0;
 };

@@ -2,30 +2,39 @@
 
 ## Requirement
 
-* cmake(>3.5)
-* `papi` 빌드
+* cmake (3.5+)
+* `papi`
 
-### `papi` 설치
-
-mac/ linux 사용자만
+### Initializing submodules
 
 ```bash
-# in project root directory(macOS/linux)
+# in project root directory
+git submodule update --init --recursive
+```
+
+### Building `papi` 
+
+`papi` works only on Linux. This part is not necessary in Windows or MacOS.
+
+```bash
+# in project root directory(Linux)
 git submodule update --init --recursive
 cd external/papi
 ./configure
 make
 ```
 
-`libpfm` 설치해야 될 수도 있음
+> Note: `libpfm`  might be necessary to build `papi`
 
 ## Build
 
+### Debug build
+
 ```bash
-# mac/ linux
+# mac/ Linux
 mkdir build
 cd build
-cmake ..
+cmake -DCMAKE_BUILD_TYPE=Debug ..
 make
 ```
 
@@ -35,28 +44,109 @@ mkdir build
 cd build
 cmake ..
 
-cmake --build .
+cmake --build . --config Debug
 # or
 msbuild mpf_knapsack.sln
 ```
 
-## 실행
+### Release build
+```bash
+# mac/ Linux
+mkdir build
+cd build
+cmake -DCMAKE_BUILD_TYPE=Release ..
+make
+```
 
-* linux/ macOS: 바이너리는 `build/bin` 에 저장되어 있음
-* Windows: 바이너리는 `build/bin/Debug`에
+```powershell
+# powershell(windows)
+mkdir build
+cd build
+cmake ..
 
-## `common` 
+cmake --build . --config Release
+# or
+msbuild mpf_knapsack.sln
+```
 
-공통으로 사용되는 기능으로 `src/common`에 header-only 형태로 사용할 수 있음
 
-### `Timer`
+## Run
 
-내부적으로 `papi`를 사용, 윈도우는 지원하지 않아서 윈도우 커널 함수인 `QueryPerformanceCounter`를 사용
+* Linux/ macOS: run one of binaries in `build/bin` 
+* Windows: run one of binaries in `build/bin/Debug` or `build/bin/Release`
 
-* `papi`는 프로세스가 실제로 실행된 시간만큼만 게산(sleep되거나 context 스위치 된 시간은 제외)
-* `QueryPerformanceCounter`: 단순히 현재 타임스탬프 값을 계산
+>  Warning: to run `parallel_copa`, the location of `copa_kernels.cl` must be specified
+
+```bash
+# default location is ./src/parallel_copa/copa_kernels.cl
+./parallel_copa
+
+# specifying the location of copa_kernels.cl 
+./parallel_copa -f /home/test/copa_kernels.cl
+```
+
+### CLI interface
+
+You can configure the experiment by passing parameter as command line argument.
+
+#### Query available platforms and devices
+
+Only for `parallel_copa`
+
+```bash
+PS C:\Users\test\MPF_knapsack\build\bin\Release> .\parallel_copa.exe --list
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+|       Platform       |                    Device                     | Max CU size | Max WG Size | Max Globel Mem | Global Mem Cache Size | Global Mem Cacheline Size | Local Mem Size |
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| [0] Intel(R) OpenCL  | [0] Intel(R) UHD Graphics 620                 |          24 |         256 |     6811119616 |                524288 |                        64 |          65536 |
+| [0] Intel(R) OpenCL  | [1] Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz  |           8 |        8192 |    17027801088 |                262144 |                        64 |          32768 |
+| [1] Intel(R) OpenCL  | [0] Intel(R) UHD Graphics 620                 |          24 |         256 |     6811119616 |                524288 |                        64 |          65536 |
+| [1] Intel(R) OpenCL  | [1] Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz  |           8 |        8192 |    17027801088 |                262144 |                        64 |          32768 |
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+```
+
+#### Available parameter
+
+Use `--help`
+
+```powershell
+# powershell
+PS C:\Users\test\MPF_knapsack\build\bin\Release> .\parallel_copa.exe --help
+Solve kanpsack problem on heterogeous cores using OpenCL
+Usage:
+  C:\Users\test\MPF_knapsack\build\bin\Release\parallel_copa.exe [OPTION...]
+
+  -p, --platform arg      Platform Index (default: 0)
+  -d, --device arg        Device Index (default: 0)
+  -c, --size_cu arg       the number of compute units to be used (default: 1)
+  -w, --size_wg arg       the number of work items per a group (default: 1)
+  -n, --data_size arg     The number of data (default: 10)
+  -s, --seed arg          Seed for data generator (default: 0)
+  -f, --cl_file_path arg  path of copa_kernels.cl file (default:
+                          src/parallel-copa/copa_kernels.cl)
+      --list              List platforms and devices
+  -h, --help              Print help
+```
+
+## Development
+
+### `common` module
+
+Commonly used features (header-only in `src/common`)
+
+#### `Timer`
+
+It internally use `papi` (Linux). On Windows, it use `QueryPerformanceCounter` function in Window SDK.
+
+> Warning: For MacOS, timer will be implemented in `std::chrono::high_resolution_clock`
+
+There is a subtle difference between `papi` and `QueryPerformanceCounter`
+
+* `papi` excludes the time the processed was slept or suspended
+* `QueryPerformanceCounter`: includes the time the processed was slept or suspended
 
 ```cpp
+/* Usage */
 #include<iostream>
 #include <thread>
 #include <chrono>
@@ -79,9 +169,9 @@ int main() {
 }
 ```
 
-`start`를 호출하면 타이머가 시작된다. `end`를 호출하면 현재까지 지난 시간을 반환한다.
+By invoking `start`, timer keeps the start time and `end` function will return the elapsed time.
 
-### `Data` and `DataGenerator`
+#### `Data` and `DataGenerator`
 
 ```cpp
 #include <iostream>
@@ -100,78 +190,6 @@ int main() {
 }
 ```
 
-`DataGenerator::generate`을 실행하면 된다. 첫 파라미터는 데이터의 수, 두 번째 파라미터는 seed 값이다. 시드값이 같을 때 항상 같은 랜덤 데이터를 리턴한다.
+Just run `DataGenerator::generate`.
 
-## Parallel knapsack
-
-다양한 환경에서 테스트를 할 수 있도록 cli 인터페이스가 구현되어 있다.
-
-주의할 점으로는 실행하는 위치에 `copa_kernels.cl`파일이 있어야 한다. 파일이 없다면 복사를 하거나 `-f` 옵션으로 위치를 지정할 수 있다.
-
-```bash
-# default 값으로 실행
-./parallel_copa
-
-# 파일 위치 지정
-./parallel_copa -f ../../../copa_kernels.cl
-```
-
-실행 결과 예시
-
-```
-Selected Platform: Intel(R) OpenCL
-Selected Device:   Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz
-Solution:     40927966
-Solution Set: 1000111101
-Elapsed Time: 841341800ns
-```
-
-### 플랫폼, 디바이스 바꾸기
-
-Intel 외에 다른 플랫폼에서 실행하고자 하는 경우 실행가능한 플랫폼과 디바이스를 확인한다.
-
-```bash
-# 버전이 다른 Opencl 2개가 설치되어 있어 2개가 나옴 NVidia나 AMD GPU도 같은 방법으로 가능(테스트 필요)
-./parallel_copa --list
-Platforms
-------------------
-[0] Intel(R) OpenCL
-  - [0] Intel(R) UHD Graphics 620
-  - [1] Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz
-[1] Intel(R) OpenCL
-  - [0] Intel(R) UHD Graphics 620
-  - [1] Intel(R) Core(TM) i7-8550U CPU @ 1.80GHz
-```
-
-인덱스 번호를 확인하고 파라미터로 넘기면 된다.
-
-```
-./parallel_copa -p 0 -d 1
-```
-
-### 스레드 수 바꾸기
-
-`-j` 옵션을 사용한다.
-
-### 기타 옵션
-
-`--help`로 사용 가능한 옵션을 확인할 수 있다.
-
-```powershell
-# powershell
-PS C:\MPF_knapsack\build\bin\Debug> .\parallel_copa.exe --help
-Solve kanpsack problem on heterogeous cores using OpenCL
-Usage:
-  C:\MPF_knapsack\build\bin\Debug\parallel_copa.exe [OPTION...]
-
-  -d, --device arg        Device Index (default: 0)
-  -p, --platform arg      Platform Index (default: 0)
-  -n, arg                 The number of data (default: 10)
-  -j, arg                 the number of threads (default: 8)
-  -s, --seed arg          Seed for data generator (default: 0)
-  -f, --cl_file_path arg  path of copa_kernels.cl file (default:
-                          copa_kernels.cl)
-      --list              List platforms and devices
-  -h, --help              Print help
-```
-
+First parameter is the number of data and second parameter is a seed number for random number generator.

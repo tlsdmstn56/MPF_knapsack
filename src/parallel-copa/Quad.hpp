@@ -12,6 +12,7 @@
 
 struct CACHELINE_ALIGNED Quad
 {
+	Quad() : startA(0), endA(0), startB(0), endB(0) {}
 	Quad(cl_int startA, cl_int endA, cl_int startB, cl_int endB): 
 		startA(startA), endA(endA), startB(startB), endB(endB) {}
 	cl_int startA, endA, startB, endB;

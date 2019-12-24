@@ -2,7 +2,7 @@
 #include <vector>
 #include <string>
 
-// #pragma OPENCL EXTENSION cl_intel_printf : enable
+ #pragma OPENCL EXTENSION cl_intel_printf : enable
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #include <CL/cl.hpp>
 #include <cxxopts.hpp>
@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
 		return EXIT_FAILURE;
 	}
 	
-	// FIXME:
+	// FIXME: only for debug
 	/*n = 10; seed = 0;
 	platform_idx = 0; 
 	device_idx = 1;
@@ -113,6 +113,9 @@ int main(int argc, char** argv) {
 	cl_int solution = 0;
 	bitset<64> solutionSet;
 	int64_t time=0;
+	device_idx = 1;
+	num_compute_unit = 4;
+	num_work_item = 32;
 	try {
 		IntelCPUParallelCopa copa(platform_idx, device_idx, num_compute_unit, num_work_item,
 			data, cl_file_path);
@@ -127,7 +130,6 @@ int main(int argc, char** argv) {
 	}
 
 	cout << "Solution:     " << solution << "\n";
-	cout << "Solution Set: " << solutionSet.to_string().substr(64-n, n) << "\n";
 	cout << "Elapsed Time: " << time/1000000ll << " ms\n";
 
 	return EXIT_SUCCESS;
