@@ -2,7 +2,7 @@
 #include <vector>
 #include <string>
 
-// #pragma OPENCL EXTENSION cl_intel_printf : enable
+ #pragma OPENCL EXTENSION cl_intel_printf : enable
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #include <CL/cl.hpp>
 #include <cxxopts.hpp>
@@ -10,45 +10,59 @@
 #include <common/Data.hpp> // Data
 #include <common/DataGenerator.hpp> // DataGenerator
 #include <common/Timer.hpp> // Timer
+#include <common/VariadicTable.hpp>
 
 #include "Utils.hpp"
 #include "IntelCPUParallelCopa.hpp"
 
+using namespace std;
+
 void printCLSDK() {
-	std::vector<cl::Platform> platforms;
-	std::vector<cl::Device> devices;
+	vector<cl::Platform> platforms;
+	vector<cl::Device> devices;
 	cl::Platform::get(&platforms);
 	if (platforms.empty()) {
-		std::cerr << "OpenCL is not installed." << std::endl;
+		cerr << "OpenCL is not installed." << endl;
 		return;
 	}
-	std::cout << "Platforms\n";
-	std::cout << "------------------\n";
+	VariadicTable<string, string, cl_uint, size_t,cl_ulong, cl_ulong, cl_uint, cl_ulong> vt({
+		"Platform", "Device", "Max CU size", "Max WG Size","Max Globel Mem", "Global Mem Cache Size",
+		"Global Mem Cacheline Size", "Local Mem Size" });
 	for (int32_t i = 0; i < platforms.size(); ++i) {
-		std::cout << "[" << i << "] " << platforms[i].getInfo<CL_PLATFORM_NAME>() << "\n";
+		string plaform = "[" + to_string(i) + "] " + platforms[i].getInfo<CL_PLATFORM_NAME>();
 		platforms[i].getDevices(CL_DEVICE_TYPE_ALL, &devices);
 		for (int32_t i = 0; i < devices.size(); ++i) {
-			std::cout << "  - [" << i << "] " << devices.at(i).getInfo<CL_DEVICE_NAME>() << "\n";
+			string device = "[" + to_string(i) + "] " + devices.at(i).getInfo<CL_DEVICE_NAME>();
+			cl_uint max_cu = devices.at(i).getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>();
+			size_t max_wg = devices.at(i).getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE >();
+			cl_ulong global_mem = devices.at(i).getInfo<CL_DEVICE_GLOBAL_MEM_SIZE>();
+			cl_ulong global_mem_cache = devices.at(i).getInfo<CL_DEVICE_GLOBAL_MEM_CACHE_SIZE>();
+			cl_uint	 global_mem_cacheline = devices.at(i).getInfo<CL_DEVICE_GLOBAL_MEM_CACHELINE_SIZE>();
+			cl_ulong  local_mem = devices.at(i).getInfo<CL_DEVICE_LOCAL_MEM_SIZE>();
+			vt.addRow({ plaform, device, max_cu, max_wg, global_mem, global_mem_cache, global_mem_cacheline, local_mem});
 		}
 	}
+	vt.print(std::cout);
 }
 
-bool isNumThreadsValid(int num_threads, int n)
+bool isNumThreadsValid(int num_work_item, int n)
 {
-	return ((1ll << (n >> 1)) / num_threads) > 0;
+	return ((1<<(n>>1)) % num_work_item) == 0;
 }
 
 int main(int argc, char** argv) {
-	int device_idx = 0, platform_idx = 0, n = 10, num_threads = 1, seed=0;
-	std::string cl_file_path;
+	int device_idx = 0, platform_idx = 0, n = 10, num_work_item = 1, seed=0, num_compute_unit=1;
+	string cl_file_path;
 	cxxopts::Options options(argv[0], "Solve kanpsack problem on heterogeous cores using OpenCL");
 	options.add_options()
 		("p,platform", "Platform Index", cxxopts::value<int>(platform_idx)->default_value("0"))
 		("d,device", "Device Index", cxxopts::value<int>(device_idx)->default_value("0"))
-		("j,", "the number of threads", cxxopts::value<int>(num_threads)->default_value("1"))
-		("n,", "The number of data", cxxopts::value<int>(n)->default_value("10"))
+		("c,size_cu", "the number of compute units to be used", cxxopts::value<int>(num_compute_unit)->default_value("1"))
+		("w,size_wg", "the number of work items per a group", cxxopts::value<int>(num_work_item)->default_value("1"))
+		("n,data_size", "The number of data", cxxopts::value<int>(n)->default_value("10"))
 		("s,seed", "Seed for data generator", cxxopts::value<int>(seed)->default_value("0"))
-		("f,cl_file_path", "path of copa_kernels.cl file", cxxopts::value<std::string>(cl_file_path)->default_value("copa_kernels.cl"))
+		("f,cl_file_path", "path of copa_kernels.cl file", 
+			cxxopts::value<string>(cl_file_path)->default_value("src/parallel-copa/copa_kernels.cl"))
 		("list", "List platforms and devices")
 		("h,help", "Print help")
 		;
@@ -63,40 +77,47 @@ int main(int argc, char** argv) {
 		}
 		if (result.count("h") || result.count("help")) 
 		{
-			std::cout << options.help() << "\n";
+			cout << options.help() << "\n";
 			return EXIT_SUCCESS;
 		}
 	}
 	catch (const cxxopts::OptionException& e)
 	{
-		std::cerr << "ERROR: parsing options: " << e.what() << std::endl;
+		cerr << "ERROR: parsing options: " << e.what() << endl;
 		return EXIT_FAILURE;
 	}
-	if (!isNumThreadsValid(num_threads, n))
+	if (!isNumThreadsValid(num_work_item, n))
 	{
-		std::cerr << "ERROR: too small data size(n) given the number of threads " << std::endl;
+		cerr << "ERROR: num_work_item must be power of 2" << endl;
 		return EXIT_FAILURE;
 	}
 
 	
 
-	std::vector<cl::Platform> platforms;
-	std::vector<cl::Device> devices;
+	vector<cl::Platform> platforms;
+	vector<cl::Device> devices;
 	cl::Platform::get(&platforms);
 	if (platforms.empty()) {
-		std::cerr << "OpenCL is not installed." << std::endl;
+		cerr << "OpenCL is not installed." << endl;
 		return EXIT_FAILURE;
 	}
-	std::cout << "Selected Platform: " << platforms.at(platform_idx).getInfo<CL_PLATFORM_NAME>() << "\n";
-	platforms.at(platform_idx).getDevices(CL_DEVICE_TYPE_ALL, &devices);
-	std::cout << "Selected Device:   " << devices.at(device_idx).getInfo<CL_DEVICE_NAME>() << "\n";
+	
+	// FIXME: only for debug
+	/*n = 10; seed = 0;
+	platform_idx = 0; 
+	device_idx = 1;
+	num_work_item = 4;
+	num_compute_unit = 2;*/
 	Data data = DataGenerator::generate(n, seed);
 
-	cl_long solution = 0;
-	std::bitset<64> solutionSet;
+	cl_int solution = 0;
+	bitset<64> solutionSet;
 	int64_t time=0;
+	device_idx = 1;
+	num_compute_unit = 4;
+	num_work_item = 32;
 	try {
-		IntelCPUParallelCopa copa(platform_idx, device_idx, num_threads,
+		IntelCPUParallelCopa copa(platform_idx, device_idx, num_compute_unit, num_work_item,
 			data, cl_file_path);
 		solution = copa.Solve();
 		solutionSet = copa.getSolutionSet();
@@ -104,13 +125,12 @@ int main(int argc, char** argv) {
 	}
 	catch (const CLFileNotExistException& e)
 	{
-		std::cerr << e.what() << "\n";
+		cerr << e.what() << "\n";
 		return EXIT_FAILURE;
 	}
 
-	std::cout << "Solution:     " << solution << "\n";
-	std::cout << "Solution Set: " << solutionSet.to_string().substr(64-n, n) << "\n";
-	std::cout << "Elapsed Time: " << time << " ns\n";
+	cout << "Solution:     " << solution << "\n";
+	cout << "Elapsed Time: " << time/1000000ll << " ms\n";
 
 	return EXIT_SUCCESS;
 }

@@ -10,12 +10,12 @@ elseif(UNIX)
     set(CMAKE_CXX_COMPILER "clang")
     set(CMAKE_CXX_COMPILER "clang++")
     # compile flags
-    SET (CMAKE_C_FLAGS_INIT                "-Wall -std=c99")
+    SET (CMAKE_C_FLAGS_INIT                "-Wall -Wextra")
     SET (CMAKE_C_FLAGS_DEBUG_INIT          "-g")
     SET (CMAKE_C_FLAGS_MINSIZEREL_INIT     "-Os -DNDEBUG")
     SET (CMAKE_C_FLAGS_RELEASE_INIT        "-O3 -DNDEBUG")
     SET (CMAKE_C_FLAGS_RELWITHDEBINFO_INIT "-O2 -g")
-    SET (CMAKE_CXX_FLAGS_INIT                "-Wall")
+    SET (CMAKE_CXX_FLAGS_INIT                "-Wall -Wextra")
     SET (CMAKE_CXX_FLAGS_DEBUG_INIT          "-g")
     SET (CMAKE_CXX_FLAGS_MINSIZEREL_INIT     "-Os -DNDEBUG")
     SET (CMAKE_CXX_FLAGS_RELEASE_INIT        "-O3 -DNDEBUG")
@@ -24,7 +24,7 @@ endif()
 
 
 # build standard
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
